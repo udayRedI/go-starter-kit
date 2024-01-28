@@ -4,8 +4,8 @@ type QueueAction func(string, string, string) (func(string), error)
 type QueueRoute map[string]QueueAction
 
 type HttpAction struct {
-	Handler       func(*Request) *Response
-	AuthValidator AuthValidatorCallback
+	Handler        func(*Request) *Response
+	AuthValidators []AuthValidatorCallback
 }
 
 type HttpRoute map[string]HttpAction

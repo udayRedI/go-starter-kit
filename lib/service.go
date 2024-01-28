@@ -167,15 +167,14 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 	if foundRoute {
 		var isAuthenticated bool = true // default true as there could be public routes and things are handled in actionRoute.AuthValidator
 		var userIdStr string = ""
-		if actionRoute.AuthValidator != nil { // Auth check
-			validator := actionRoute.AuthValidator(s)
-			if validator == nil {
-				isAuthenticated = false
-			} else {
-				_isAuthenticated, _userPtr := validator.Validate(req)
-				isAuthenticated = _isAuthenticated
-				if _userPtr != nil {
-					userIdStr = *_userPtr
+
+		validators := actionRoute.AuthValidators
+
+		if len(validators) > 0 { // Auth check
+			for _, validator := range validators {
+				if _isAuthenticated, user := validator(s).Validate(req); _isAuthenticated {
+					userIdStr = *user
+					break
 				}
 			}
 		}
