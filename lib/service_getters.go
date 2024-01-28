@@ -15,14 +15,6 @@ func (s *Service) GetValidationUrl() string {
 	return s.config.JwtValidationUrl
 }
 
-func (s *Service) GetDroneApiUrl() string {
-	return s.config.DroneApiUrl
-}
-
-func (s *Service) GetNotificationApiUrl() string {
-	return s.config.NotificationApiUrl
-}
-
 func (s *Service) GetQueueNameByRef(queueRef string) *string {
 	queueName, found := s.config.Queues[queueRef]
 	if found == false {
@@ -53,8 +45,4 @@ func (s *Service) ExecWithDb(req *Request, dbExec func(*pgxpool.Pool) error) err
 	defer dbpool.Close()
 
 	return dbExec(dbpool)
-}
-
-func (s *Service) GetOktaConfig() OktaConfig {
-	return s.config.OktaConfig
 }

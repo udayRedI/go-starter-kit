@@ -9,40 +9,21 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 // Request stores information about HTTP request.
 type Request struct {
-	AppTitle         string
-	Action           string
-	Method           string
-	RecordID         string
-	FreeTextQuery    string
-	scrollId         string
-	Filter           map[string][]string
-	Sort             []string
-	Page             int
-	PageSize         int
-	Fields           []string
-	Context          map[string]string
-	UIReady          bool
-	OtherQueryParams map[string][]string
-	Body             io.ReadCloser
-	Header           map[string][]string
-	ID               string
-	SentryContext    context.Context
-	UserId           string
-	isAuthenticated  bool
-}
-
-// DecodeBody unmarshals request JSON in a variable.
-func (r *Request) DecodeBody(v interface{}) error {
-	if r == nil || r.Body == nil {
-		return errors.New("nothing to decode")
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	return decoder.Decode(v)
+	ID              string
+	AppTitle        string
+	Path            string
+	Method          string
+	Body            io.ReadCloser
+	Header          map[string][]string
+	SentryContext   context.Context
+	UserId          string //Fix this
+	isAuthenticated bool
+	Query           url.Values
 }
 
 func (r *Request) GetDecodedBody(data interface{}) error {
@@ -63,150 +44,9 @@ func (r *Request) GetDecodedBody(data interface{}) error {
 }
 
 func (r *Request) GetBodyMap() (*map[string]interface{}, error) {
-	body, readErr := ioutil.ReadAll(r.Body)
-
-	if readErr != nil {
-		log.Println(fmt.Sprintf("%s: ERROR: Failed to ioutil.ReadAll: %s", r.ID, readErr))
-		return nil, readErr
-	}
 
 	var data map[string]interface{}
-
-	unmarshallErr := json.Unmarshal(body, &data)
-	if unmarshallErr != nil {
-		log.Println(fmt.Sprintf("%s: ERROR: Failed to unmarshal body: %s", r.ID, unmarshallErr))
-		return nil, unmarshallErr
-	}
-
-	return &data, nil
-}
-
-// HasFilter checks whether a particular filter is set.
-func (r *Request) HasFilter(filter string) bool {
-	if len(r.Filter) == 0 {
-		return false
-	}
-
-	_, ok := r.Filter[filter]
-	return ok
-}
-
-// DefaultFilter sets default value for a filter is no value is specified.
-func (r *Request) DefaultFilter(filter string, values ...string) {
-	if len(r.Filter) == 0 {
-		r.Filter = make(map[string][]string)
-	}
-
-	_, ok := r.Filter[filter]
-	if ok {
-		return
-	}
-
-	if values == nil {
-		values = []string{""}
-	}
-	r.Filter[filter] = values
-}
-
-// GetFilter gets the specified filter's value. It returns nil when the filter doesn't exist.
-func (r *Request) GetFilter(filter string) []string {
-	if len(r.Filter) == 0 {
-		return nil
-	}
-
-	return r.Filter[filter]
-}
-
-// SetFilter sets a filter value.
-func (r *Request) SetFilter(filter string, values ...string) {
-	if len(r.Filter) == 0 {
-		r.Filter = make(map[string][]string)
-	}
-
-	if values == nil {
-		values = []string{""}
-	}
-
-	r.Filter[filter] = values
-}
-
-// RemoveFilter removes a filter if it is present.
-func (r *Request) RemoveFilter(filter string) {
-	delete(r.Filter, filter)
-}
-
-// FilterEquals checks whether a given filter has a particular (single) value.
-func (r *Request) FilterEquals(filter string, value string) bool {
-	if len(r.Filter) == 0 {
-		return false
-	}
-
-	values := r.Filter[filter]
-	if len(values) != 1 {
-		return false
-	}
-
-	return values[0] == value
-}
-
-// FilterContains checks whether a given filter has a particular value (among many possibly).
-func (r *Request) FilterContains(filter string, value string) bool {
-	if len(r.Filter) == 0 {
-		return false
-	}
-
-	values := r.Filter[filter]
-	for _, v := range values {
-		if v == value {
-			return true
-		}
-	}
-
-	return false
-}
-
-// FilterAssertAndRemove ensures that if the filter is present it has a particular value and then removes it.
-func (r *Request) FilterAssertAndRemove(filter string, value string) error {
-	if len(r.Filter) == 0 {
-		return nil
-	}
-
-	values, present := r.Filter[filter]
-	if !present {
-		return nil
-	}
-
-	if len(values) != 1 || values[0] != value {
-		return errors.New("invalid value of filter: " + filter)
-	}
-
-	delete(r.Filter, filter)
-	return nil
-}
-
-// FilterMultipleAssertAbsent determines whether provided filters are absent.
-func (r *Request) FilterMultipleAssertAbsent(filters ...string) error {
-	if len(r.Filter) == 0 {
-		return nil
-	}
-
-	for _, filter := range filters {
-		_, present := r.Filter[filter]
-		if present {
-			return errors.New("invalid filter: " + filter)
-		}
-	}
-
-	return nil
-}
-
-// GetContext returns value of particular context type if it is provided in the request.
-func (r *Request) GetContext(contextType string) string {
-	if r == nil || r.Context == nil {
-		return ""
-	}
-
-	return r.Context[contextType]
+	return &data, r.GetDecodedBody(data)
 }
 
 func (r *Request) GetHeaderVal(key string) *string {
@@ -218,18 +58,6 @@ func (r *Request) GetHeaderVal(key string) *string {
 		return nil
 	}
 	return &auth[0]
-}
-
-func (r *Request) GetFromQueryParam(key string) *string {
-	if _, found := r.OtherQueryParams[key]; !found {
-		return nil
-	}
-
-	if len(r.OtherQueryParams[key]) == 0 {
-		return nil
-	}
-
-	return &r.OtherQueryParams[key][0]
 }
 
 // Response stores information about HTTP response.

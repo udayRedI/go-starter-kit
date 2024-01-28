@@ -32,7 +32,7 @@ func (rv *RouteServerValidator) Validate(req *Request) (bool, *string) {
 
 	auth := req.GetHeaderVal("Authorization")
 	if auth == nil {
-		log.Printf("%s Auth not found in header %s", req.ID, auth)
+		log.Printf("%s Auth is nil", req.ID)
 		return false, nil
 	}
 
@@ -42,35 +42,6 @@ func (rv *RouteServerValidator) Validate(req *Request) (bool, *string) {
 
 	return true, nil
 
-}
-
-type SseJwtValidator struct {
-	jwtValidator *jwtValidator
-}
-
-func NewSseJwtValidator() AuthValidatorCallback {
-	return func(service *Service) AuthValidator {
-		return &SseJwtValidator{
-			jwtValidator: &jwtValidator{
-				service: service,
-			},
-		}
-	}
-}
-
-func (v *SseJwtValidator) Validate(req *Request) (bool, *string) {
-
-	params := req.OtherQueryParams
-
-	receivedTokens := (params)["authToken"]
-
-	if len(receivedTokens) == 0 || len(receivedTokens) > 1 {
-		return false, nil
-	}
-
-	authToken := receivedTokens[0]
-
-	return v.jwtValidator.Validate(req, authToken)
 }
 
 type HttpJwtValidator struct {
@@ -177,4 +148,22 @@ func (v *jwtValidator) getUIDFromJWT(authToken string, req *Request) (string, er
 	}
 
 	return uid, nil
+}
+
+type MockAuthValidator struct {
+	validated bool
+	uid       *string
+}
+
+func (v *MockAuthValidator) Validate(req *Request) (bool, *string) {
+	return v.validated, v.uid
+}
+
+func NewMockAuthValidator(validated bool, errStr *string) AuthValidatorCallback {
+	return func(service *Service) AuthValidator {
+		return &MockAuthValidator{
+			validated: validated,
+			uid:       errStr,
+		}
+	}
 }
