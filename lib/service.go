@@ -107,6 +107,36 @@ func (s *Service) GetAppByTitle(title string) App {
 	return app
 }
 
+func (s *Service) handleAuthResp(req *Request, validators *[]AuthValidatorCallback, onSuccess func(*Request) *Response, onFailure func(*Request) *Response) *Response {
+
+	if validators != nil && len(*validators) > 0 { // Auth check
+		for _, validator := range *validators {
+			if _isAuthenticated, user := validator(s).Validate(req); _isAuthenticated {
+				req.isAuthenticated = _isAuthenticated
+				req.UserId = *user
+				return onSuccess(req)
+			} else {
+				return onFailure(req)
+			}
+		}
+	}
+	req.isAuthenticated = false
+	return onSuccess(req)
+}
+
+// TODO: Testing
+// HTTP
+// 1. Simulate valid JWT
+// 2. Simulate valid JWT returned nothing
+// 3. Invalid JWT
+// 4. Invalid JWT but retuned resp
+// 5. Non autheticated route
+// SSE
+// 1. Simulate valid JWT
+// 2. Simulate valid JWT returned nothing
+// 3. Invalid JWT
+// 4. Invalid JWT but retuned resp
+// 5. Non autheticated route
 func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 
 	if httpReq.Method != "OPTIONS" {
@@ -165,30 +195,17 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 
 	actionRoute, foundRoute := s.routes[appName][action]
 	if foundRoute {
-		var isAuthenticated bool = true // default true as there could be public routes and things are handled in actionRoute.AuthValidator
-		var userIdStr string = ""
 
-		validators := actionRoute.AuthValidators
-
-		if len(validators) > 0 { // Auth check
-			for _, validator := range validators {
-				if _isAuthenticated, user := validator(s).Validate(req); _isAuthenticated {
-					userIdStr = *user
-					break
-				}
-			}
-		}
-		req.isAuthenticated = isAuthenticated
-		req.UserId = userIdStr
 		if hub := sentry.GetHubFromContext(ctx); hub != nil {
 			hub.Scope().SetTag("RequestType", "HTTP")
 		}
-		if req.isAuthenticated != true {
-			resp = AuthFailedResponse()
-		} else {
-			handler := actionRoute.Handler
-			resp = handler(req)
-		}
+
+		resp = s.handleAuthResp(req, &actionRoute.AuthValidators, func(r *Request) *Response {
+			return actionRoute.Handler(req)
+		}, func(r *Request) *Response {
+			return AuthFailedResponse()
+		})
+
 	} else {
 		if sseAction, foundSseHandler := s.sseHandlers[appName][action]; foundSseHandler {
 			if hub := sentry.GetHubFromContext(ctx); hub != nil {
@@ -197,25 +214,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 
 			if flusher, ok := w.(http.Flusher); ok {
 
-				if sseAction.AuthValidator != nil {
-					validator := sseAction.AuthValidator(s)
-					if validator == nil {
-						req.isAuthenticated = false
-					} else {
-						_isAuthenticated, _userPtr := validator.Validate(req)
-						req.isAuthenticated = _isAuthenticated
-						if _userPtr != nil {
-							req.UserId = *_userPtr
-						} else {
-							CaptureSentryException(fmt.Sprintf("%s Somehow user is authenticated but user-id is undefined %s", req.ID, req.UserId))
-						}
-					}
-				} else {
-					req.isAuthenticated = true
-				}
-				if !req.isAuthenticated {
-					resp = AuthFailedResponse()
-				} else {
+				resp = s.handleAuthResp(req, &sseAction.AuthValidators, func(r *Request) *Response {
 					successChan, errChan, handleClose := sseAction.Handler(req)
 					w.Header().Set("Content-Type", "text/event-stream")
 					w.Header().Set("Cache-Control", "no-cache")
@@ -223,7 +222,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 					if successChan == nil || errChan == nil {
 						sseHandleErr := errors.New(fmt.Sprintf("SuccessChan(%v) errChan(%v) cannot be nil ", successChan, errChan))
 						CaptureSentryException(sseHandleErr.Error())
-						resp = ClientErrorResponse(sseHandleErr)
+						return ClientErrorResponse(sseHandleErr)
 					} else {
 					mainOut:
 						for {
@@ -244,8 +243,12 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 								break mainOut
 							}
 						}
+						return nil
 					}
-				}
+
+				}, func(r *Request) *Response {
+					return AuthFailedResponse()
+				})
 
 			} else {
 				CaptureSentryException(fmt.Sprintf("Route %s doesnt have http.Flusher for app %s", action, appName))

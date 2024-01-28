@@ -11,8 +11,8 @@ type HttpAction struct {
 type HttpRoute map[string]HttpAction
 
 type SseAction struct {
-	Handler       func(*Request) (*chan (string), *chan (error), func(*Request))
-	AuthValidator AuthValidatorCallback
+	Handler        func(*Request) (*chan (string), *chan (error), func(*Request))
+	AuthValidators []AuthValidatorCallback
 }
 
 type SseRoute map[string]SseAction
