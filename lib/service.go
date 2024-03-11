@@ -1,15 +1,11 @@
 package lib
 
 import (
-	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/getsentry/sentry-go"
 )
@@ -20,7 +16,6 @@ type Service struct {
 	apps          map[string]App
 	routes        map[string]HttpRoute
 	queueHandlers map[string]QueueRoute
-	sseHandlers   map[string]SseRoute
 
 	SqsManager       ISqsManager
 	CacheManager     ICacheManager
@@ -34,17 +29,38 @@ func NewService(config *Config, definedApps *[]App) *Service {
 		apps:          make(map[string]App),
 		routes:        make(map[string]HttpRoute),
 		queueHandlers: make(map[string]QueueRoute),
-		sseHandlers:   make(map[string]SseRoute),
 	}
 
+	s.createRoutes(definedApps)
+
+	// Always keep this separate as there's guarantee that all apps are recognised by service.
+	for _, app := range *definedApps {
+		app.Init(s)
+	}
+
+	return s
+}
+
+func (s *Service) createRoutes(definedApps *[]App) {
 	for _, app := range *definedApps {
 		appTitle := app.Title()
+		if _, dupFound := s.apps[appTitle]; dupFound {
+			errTitle := fmt.Sprintf("%s app already defined, please choose a different name", appTitle)
+			CheckFatal(errors.New(errTitle), errTitle)
+		}
 		s.apps[appTitle] = app
 		s.routes[appTitle] = make(HttpRoute)
 		s.queueHandlers[appTitle] = make(QueueRoute)
-		s.sseHandlers[appTitle] = make(SseRoute)
-		for routeName, route := range app.Routes() {
-			s.routes[appTitle][routeName] = route
+		for _, route := range app.Routes() {
+			route.Validate()
+			if _, routeFound := s.routes[appTitle][route.Action]; !routeFound {
+				s.routes[appTitle][route.Action] = make(map[HttpMethod]HttpAction)
+			}
+			if _, dupFound := s.routes[appTitle][route.Action][route.Method]; dupFound {
+				errTitle := fmt.Sprintf("route re-initialization not allowed for %s action %s method %s", appTitle, route.Action, route.Method)
+				CheckFatal(errors.New(errTitle), errTitle)
+			}
+			s.routes[appTitle][route.Action][route.Method] = route
 		}
 		for queueRefName, handler := range app.QueueHandlers() {
 			queueName, found := s.config.Queues[queueRefName]
@@ -53,17 +69,7 @@ func NewService(config *Config, definedApps *[]App) *Service {
 			}
 			s.queueHandlers[appTitle][queueName] = handler
 		}
-		for sseRoute, sseHandler := range app.SseHandlers() {
-			s.sseHandlers[appTitle][sseRoute] = sseHandler
-		}
 	}
-
-	// Always keep this separate as there's guarantee that all apps are recognised by service.
-	for _, app := range *definedApps {
-		app.Init(s)
-	}
-
-	return s
 }
 
 func (s *Service) Init() string {
@@ -111,7 +117,7 @@ func (s *Service) handleAuthResp(req *Request, validators *[]AuthValidatorCallba
 
 	if validators != nil && len(*validators) > 0 { // Auth check
 		for _, validator := range *validators {
-			if _isAuthenticated, user := validator(s).Validate(req); _isAuthenticated {
+			if _isAuthenticated, user := validator(s).Validate(req); _isAuthenticated && user != nil {
 				req.isAuthenticated = _isAuthenticated
 				req.UserId = *user
 				return onSuccess(req)
@@ -124,19 +130,6 @@ func (s *Service) handleAuthResp(req *Request, validators *[]AuthValidatorCallba
 	return onSuccess(req)
 }
 
-// TODO: Testing
-// HTTP
-// 1. Simulate valid JWT
-// 2. Simulate valid JWT returned nothing
-// 3. Invalid JWT
-// 4. Invalid JWT but retuned resp
-// 5. Non autheticated route
-// SSE
-// 1. Simulate valid JWT
-// 2. Simulate valid JWT returned nothing
-// 3. Invalid JWT
-// 4. Invalid JWT but retuned resp
-// 5. Non autheticated route
 func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 
 	if httpReq.Method != "OPTIONS" {
@@ -157,184 +150,105 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 
-	appName, action, recordID := decodeURI(httpReq)
-
-	// TODO: Move to a factory
-	freeTextQuery, filter, sort, page, pageSize, fields, context, uiReady, other, scrollId := decodeQueryParams(httpReq.URL.Query())
+	appName, action := decodeURI(httpReq)
 
 	ctx := httpReq.Context()
 
 	var resp *Response
 
 	req := &Request{
-		AppTitle:         appName,
-		Action:           action,
-		Method:           httpReq.Method,
-		RecordID:         recordID,
-		FreeTextQuery:    freeTextQuery,
-		Filter:           filter,
-		Sort:             sort,
-		Page:             page,
-		PageSize:         pageSize,
-		Fields:           fields,
-		Context:          context,
-		UIReady:          uiReady,
-		OtherQueryParams: other,
-		Body:             httpReq.Body,
-		scrollId:         scrollId,
-		Header:           httpReq.Header,
-		ID:               GenerateRandomUUID(),
-		SentryContext:    ctx,
+		AppTitle:      appName,
+		Path:          httpReq.URL.Path,
+		Method:        httpReq.Method,
+		Header:        httpReq.Header,
+		ID:            GenerateRandomUUID(),
+		SentryContext: ctx,
+		Query:         httpReq.URL.Query(),
 	}
 
-	defer Handlepanic(fmt.Sprintf("%s: API (%s) crashed", req.ID, action))
+	defer Handlepanic(fmt.Sprintf("%s: API (%s) crashed", req.ID, req.Path))
 
 	if hub := sentry.GetHubFromContext(ctx); hub != nil {
 		hub.Scope().SetTag("trace-id", req.ID)
 	}
 
-	actionRoute, foundRoute := s.routes[appName][action]
-	if foundRoute {
+	returnError := func(errStr string, resp *Response) {
+		CaptureSentryException(errStr)
+		s.returnResp(w, resp, req)
+	}
 
-		if hub := sentry.GetHubFromContext(ctx); hub != nil {
-			hub.Scope().SetTag("RequestType", "HTTP")
-		}
+	methodMap, foundRoute := s.routes[appName][action]
+	if !foundRoute {
+		returnError(fmt.Sprintf("Invalid route %s encountered in app %s", action, appName), NotFoundResponse())
+		return
+	}
 
-		resp = s.handleAuthResp(req, &actionRoute.AuthValidators, func(r *Request) *Response {
-			return actionRoute.Handler(req)
-		}, func(r *Request) *Response {
-			return AuthFailedResponse()
-		})
+	var httpAction HttpAction
 
+	if action, actionFound := methodMap[HttpMethod(req.Method)]; actionFound {
+		httpAction = action
 	} else {
-		if sseAction, foundSseHandler := s.sseHandlers[appName][action]; foundSseHandler {
-			if hub := sentry.GetHubFromContext(ctx); hub != nil {
-				hub.Scope().SetTag("RequestType", "SSE")
-			}
 
-			if flusher, ok := w.(http.Flusher); ok {
-
-				resp = s.handleAuthResp(req, &sseAction.AuthValidators, func(r *Request) *Response {
-					successChan, errChan, handleClose := sseAction.Handler(req)
-					w.Header().Set("Content-Type", "text/event-stream")
-					w.Header().Set("Cache-Control", "no-cache")
-					w.Header().Set("Connection", "keep-alive")
-					if successChan == nil || errChan == nil {
-						sseHandleErr := errors.New(fmt.Sprintf("SuccessChan(%v) errChan(%v) cannot be nil ", successChan, errChan))
-						CaptureSentryException(sseHandleErr.Error())
-						return ClientErrorResponse(sseHandleErr)
-					} else {
-					mainOut:
-						for {
-							select {
-							case <-time.After(55 * time.Second):
-								fmt.Fprintf(w, "data: ping\n\n")
-								flusher.Flush()
-							case successResp := <-*successChan:
-								fmt.Fprintf(w, "data: %s\n\n", successResp)
-								flusher.Flush()
-							case chanErr := <-*errChan:
-								log.Printf("%s: INFO: Closing connection %s because of error %s", req.ID, req.UserId, chanErr)
-								handleClose(req)
-								break mainOut
-							case <-req.SentryContext.Done():
-								log.Println(fmt.Sprintf("%s: INFO: Connection closed for UID: %s", req.ID, req.UserId))
-								handleClose(req)
-								break mainOut
-							}
-						}
-						return nil
-					}
-
-				}, func(r *Request) *Response {
-					return AuthFailedResponse()
-				})
-
-			} else {
-				CaptureSentryException(fmt.Sprintf("Route %s doesnt have http.Flusher for app %s", action, appName))
-				resp = NotFoundResponse()
-			}
-		} else {
-			CaptureSentryException(fmt.Sprintf("Invalid route %s encountered in app %s", action, appName))
-			resp = NotFoundResponse()
-		}
+		returnError(fmt.Sprintf("%s not allowed on %s", req.Method, httpReq.URL.Path), &Response{
+			Status: http.StatusMethodNotAllowed,
+			Body:   fmt.Sprintf("%s not allowed on %s", req.Method, httpReq.URL.Path),
+		})
+		return
 	}
 
+	if hub := sentry.GetHubFromContext(ctx); hub != nil {
+		hub.Scope().SetTag("RequestType", "HTTP")
+	}
+
+	resp = s.handleAuthResp(req, &httpAction.AuthValidators, func(r *Request) *Response {
+		return httpAction.Handler(req)
+	}, func(r *Request) *Response {
+		return AuthFailedResponse()
+	})
+
+	s.returnResp(w, resp, req)
+
+}
+
+func (s *Service) prepareResp(w http.ResponseWriter, resp *Response, req *Request) *[]byte {
 	// Prepare HTTP response
-	httpRespStr, foundRoute := resp.Body.(string)
+	httpRespStr, respIsStr := resp.Body.(string)
 	httpRespBytes := []byte(httpRespStr)
-	if !foundRoute {
-		var okBytes bool
-		httpRespBytes, okBytes = resp.Body.([]byte)
-		foundRoute = okBytes
-	}
-	if !foundRoute {
-		httpRespJSONBytes, err := json.Marshal(resp.Body)
-		if err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusInternalServerError)
-			CaptureSentryException(fmt.Sprintf("Error encountered during json.Marshal for body %v, error %s", resp.Body, err))
-			fmt.Fprintf(w, "{\"Msg\": \"something went wrong on our side\"}")
-			return
+	if !respIsStr {
+		var respIsBytes bool
+		httpRespBytes, respIsBytes = resp.Body.([]byte)
+		if !respIsBytes {
+			httpRespJSONBytes, err := json.Marshal(resp.Body)
+			if err != nil {
+				log.Println(err)
+				w.WriteHeader(http.StatusInternalServerError)
+				CaptureSentryException(fmt.Sprintf("%s Error encountered during json.Marshal for body %v, error %s", req.ID, resp.Body, err))
+				fmt.Fprintf(w, "{\"Msg\": \"something went wrong on our side\"}")
+				return nil
+			}
+			httpRespBytes = httpRespJSONBytes
 		}
-		httpRespBytes = httpRespJSONBytes
 	}
+	return &httpRespBytes
+}
 
-	// Send response
-	if resp.Status != 0 && resp.Status != http.StatusOK {
+func (s *Service) returnResp(w http.ResponseWriter, resp *Response, req *Request) {
+
+	bytesResp := s.prepareResp(w, resp, req)
+	if resp.Status != 0 {
 		w.WriteHeader(resp.Status)
 	}
-	s.compressResponse(w, httpReq, &httpRespBytes)
-	_, err := w.Write(httpRespBytes)
+
+	if bytesResp == nil {
+		log.Printf("%s bytesResp is nil", req.ID)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	_, err := w.Write(*bytesResp)
 	if err != nil {
-		log.Println(err)
+		log.Printf("%s Error during w.Write with %s", req.ID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "{\"Msg\": \"something went wrong on our side\"}")
 	}
-}
-
-// compressResponse gzips large responses for better load performance.
-func (s *Service) compressResponse(w http.ResponseWriter, httpReq *http.Request, resp *[]byte) {
-	// Small responses needn't be compressed
-	if len(*resp) <= 1024 {
-		return
-	}
-
-	// Ensure client accepts gzip
-	if !strings.Contains(httpReq.Header.Get("Accept-Encoding"), "gzip") {
-		return
-	}
-
-	// Skip those with missing content type
-	contentType := w.Header().Get("Content-Type")
-	if contentType == "" {
-		return
-	}
-
-	// Don't re-compress
-	if strings.HasPrefix(contentType, "image/") ||
-		strings.HasPrefix(contentType, "audio/") ||
-		strings.HasPrefix(contentType, "video/") ||
-		strings.HasPrefix(contentType, "zip/") ||
-		strings.HasPrefix(contentType, "zip2/") {
-		return
-	}
-
-	// Compress response
-	compressedResp := new(bytes.Buffer)
-	compressor := gzip.NewWriter(compressedResp)
-
-	// Send uncompressed response if there is a compression error
-	if _, err := compressor.Write(*resp); err != nil {
-		compressor.Close()
-		return
-	}
-	if err := compressor.Close(); err != nil {
-		return
-	}
-
-	// Compression successful, update response and encoding header
-	c := compressedResp.Bytes()
-	*resp = c
-	w.Header().Add("Content-Encoding", "gzip")
 }

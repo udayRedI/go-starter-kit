@@ -40,10 +40,8 @@ type Config struct {
 
 	DbUrl      string     `json:"DbUrl"`
 	RedisCreds CacheCreds `json:"Redis"`
-
-	OktaConfig OktaConfig `json:"OktaConfig"`
 }
 
 func (config *Config) IsValid() bool {
-	return config.OktaConfig.IsValid()
+	return true
 }

@@ -18,9 +18,9 @@ func (health *Health) Init(service *lib.Service) {
 	health.service = service
 }
 
-func (health *Health) Routes() lib.HttpRoute {
-	return lib.HttpRoute{
-		"get": lib.HttpAction{
+func (health *Health) Routes() []lib.HttpAction {
+	return []lib.HttpAction{
+		{
 			Handler: health.Get,
 		},
 	}
@@ -28,10 +28,6 @@ func (health *Health) Routes() lib.HttpRoute {
 
 func (health *Health) QueueHandlers() lib.QueueRoute {
 	return lib.QueueRoute{}
-}
-
-func (health *Health) SseHandlers() lib.SseRoute {
-	return lib.SseRoute{}
 }
 
 func (health *Health) Get(req *lib.Request) *lib.Response {
