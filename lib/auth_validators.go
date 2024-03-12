@@ -10,8 +10,13 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
+type Auth struct {
+	IsAuthenticated bool
+	Payload         any
+}
+
 type AuthValidator interface {
-	Validate(*Request) (bool, *string)
+	Validate(*Request) Auth
 }
 
 type RouteServerValidator struct {
@@ -28,20 +33,12 @@ func NewRouteServerValidator() AuthValidatorCallback {
 	}
 }
 
-func (rv *RouteServerValidator) Validate(req *Request) (bool, *string) {
+func (rv *RouteServerValidator) Validate(req *Request) Auth {
 
-	auth := req.GetHeaderVal("Authorization")
-	if auth == nil {
-		log.Printf("%s Auth is nil", req.ID)
-		return false, nil
+	return Auth{
+		IsAuthenticated: false,
+		Payload:         nil,
 	}
-
-	if *auth != rv.service.GetAuthToken() {
-		return false, nil
-	}
-
-	return true, nil
-
 }
 
 type HttpJwtValidator struct {
