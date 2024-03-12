@@ -14,16 +14,16 @@ import (
 
 // Request stores information about HTTP request.
 type Request struct {
-	ID              string
-	AppTitle        string
-	Path            string
-	Method          string
-	Body            io.ReadCloser
-	Header          map[string][]string
-	SentryContext   context.Context
-	UserId          string //Fix this
-	isAuthenticated bool
-	Query           url.Values
+	ID            string
+	AppTitle      string
+	Path          string
+	Method        string
+	Body          io.ReadCloser
+	Header        map[string][]string
+	SentryContext context.Context
+	UserId        string //Fix this
+	Auth          Auth
+	Query         url.Values
 }
 
 func (r *Request) GetDecodedBody(data interface{}) error {

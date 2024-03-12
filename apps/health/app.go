@@ -1,6 +1,9 @@
 package health
 
-import "github.com/udayRedI/go-starter-kit/lib"
+import (
+	"github.com/udayRedI/go-starter-kit/commons"
+	"github.com/udayRedI/go-starter-kit/lib"
+)
 
 type Health struct {
 	service *lib.Service
@@ -24,6 +27,9 @@ func (health *Health) Routes() []lib.HttpAction {
 			Handler: health.Get,
 			Method:  lib.GET,
 			Action:  "/get",
+			AuthValidators: []lib.AuthValidatorCallback{
+				commons.NewRouteHeaderValidator(),
+			},
 		},
 	}
 }

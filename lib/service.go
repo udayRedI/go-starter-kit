@@ -113,18 +113,22 @@ func (s *Service) GetAppByTitle(title string) App {
 
 func (s *Service) handleAuthResp(req *Request, validators *[]AuthValidatorCallback, onSuccess func(*Request) *Response, onFailure func(*Request) *Response) *Response {
 
+	reqAuth := Auth{}
+
 	if validators != nil && len(*validators) > 0 { // Auth check
 		for _, validator := range *validators {
-			if _isAuthenticated, user := validator(s).Validate(req); _isAuthenticated && user != nil {
-				req.isAuthenticated = _isAuthenticated
-				req.UserId = *user
-				return onSuccess(req)
-			} else {
-				return onFailure(req)
+			if auth := validator(s).Validate(req); auth.IsAuthenticated {
+				reqAuth = auth
 			}
 		}
+		if reqAuth.IsAuthenticated {
+			req.Auth = reqAuth
+			return onSuccess(req)
+		} else {
+			return onFailure(req)
+		}
 	}
-	req.isAuthenticated = false
+
 	return onSuccess(req)
 }
 
@@ -186,7 +190,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, httpReq *http.Request) {
 	if action, actionFound := methodMap[HttpMethod(req.Method)]; actionFound {
 		httpAction = action
 	} else {
-
 		returnError(fmt.Sprintf("%s not allowed on %s", req.Method, httpReq.URL.Path), &Response{
 			Status: http.StatusMethodNotAllowed,
 			Body:   fmt.Sprintf("%s not allowed on %s", req.Method, httpReq.URL.Path),

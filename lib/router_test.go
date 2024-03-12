@@ -57,7 +57,7 @@ func (mApp *MockApp) Routes() []HttpAction {
 		{
 			Method:         "GET",
 			Action:         "private-success-get",
-			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(true, &AUTH_UID)},
+			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(Auth{IsAuthenticated: true, Payload: AUTH_UID})},
 			Handler: func(*Request) *Response {
 				return SuccessResponse("Success")
 			},
@@ -65,7 +65,7 @@ func (mApp *MockApp) Routes() []HttpAction {
 		{
 			Method:         "GET",
 			Action:         "private-success-uid2",
-			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(true, &AUTH_UID2)},
+			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(Auth{IsAuthenticated: true, Payload: AUTH_UID2})},
 			Handler: func(*Request) *Response {
 				return SuccessResponse("Success")
 			},
@@ -73,7 +73,7 @@ func (mApp *MockApp) Routes() []HttpAction {
 		{
 			Method:         "GET",
 			Action:         "private-success-with-no-uid",
-			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(true, nil)},
+			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(Auth{IsAuthenticated: true, Payload: nil})},
 			Handler: func(*Request) *Response {
 				return SuccessResponse("Success")
 			},
@@ -81,7 +81,15 @@ func (mApp *MockApp) Routes() []HttpAction {
 		{
 			Method:         "GET",
 			Action:         "private-failure-get",
-			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(false, nil)},
+			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(Auth{})},
+			Handler: func(*Request) *Response {
+				return SuccessResponse("Success")
+			},
+		},
+		{
+			Method:         "GET",
+			Action:         "multiple-auth-get",
+			AuthValidators: []AuthValidatorCallback{NewMockAuthValidator(Auth{}), NewMockAuthValidator(Auth{IsAuthenticated: true})},
 			Handler: func(*Request) *Response {
 				return SuccessResponse("Success")
 			},
@@ -218,9 +226,9 @@ func TestRouter(t *testing.T) {
 					Path: "mock-app/private-success-with-no-uid",
 				},
 			},
-			expStatusCode: 401,
+			expStatusCode: 200,
 			resp:          &MockResponseWriter{},
-			expResp:       "{\"Msg\": \"Auth failed, please try again\"}",
+			expResp:       "Success",
 			apps:          []App{&MockApp{}},
 		},
 		{
@@ -286,6 +294,19 @@ func TestRouter(t *testing.T) {
 			expStatusCode: 200,
 			resp:          &MockResponseWriter{},
 			expResp:       "Success POST",
+			apps:          []App{&MockApp{}},
+		},
+		{
+			title: "Private route with multiple auths",
+			req: http.Request{
+				Method: "GET",
+				URL: &url.URL{
+					Path: "mock-app/multiple-auth-get",
+				},
+			},
+			expStatusCode: 200,
+			resp:          &MockResponseWriter{},
+			expResp:       "Success",
 			apps:          []App{&MockApp{}},
 		},
 	}

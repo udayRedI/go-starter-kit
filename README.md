@@ -10,6 +10,7 @@ In the future, I will also delve deeper into the 'why' behind the underlying lib
 # Table of Contents
 - [Overview](#overview)
 - [Routing](#routing)
+- [Auth](#auth)
 
 ## Overview <a name="overview"></a>
 If you've ever worked with Django, Nest.js, or perhaps Angular, you're likely familiar with a modular application structure. This approach aids in keeping the codebase organized, maintainable, and scalable.
@@ -82,6 +83,94 @@ Every action accepts 4 attribute:
 4. AuthValidator: Will be covered in detail
 
 
+## Auth <a name="auth"></a>
+Objective is not to facilitate auth because there could be any number validations. You will be able to reuse auth for every route.
+Once auth is finalized, its injected into `Request` object which is passed on to controller.
+
+Defining an auth:
+```
+
+type AuthPayload struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+}
+
+type RouteHeaderValidator struct {
+	service *lib.Service
+}
+
+func NewRouteHeaderValidator() lib.AuthValidatorCallback {
+	return func(service *lib.Service) lib.AuthValidator {
+		return &RouteHeaderValidator{
+			service: service,
+		}
+	}
+}
+
+func (rv *RouteHeaderValidator) Validate(req *lib.Request) lib.Auth {
+
+	token := req.GetHeaderVal("Token")
+	if token == nil {
+		return lib.Auth{}
+	}
+
+	url := "https://api.example.com/user/"
+
+	client := &http.Client{}
+	extReq, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return lib.Auth{}
+	}
+	extReq.Header.Set("Authorization", *token)
+
+	resp, err := client.Do(extReq)
+	if err != nil {
+		fmt.Println("Error making request:", err)
+		return lib.Auth{}
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body:", err)
+		return lib.Auth{}
+	}
+
+	var user AuthPayload
+	err = json.Unmarshal(body, &user)
+	if err != nil {
+		fmt.Println("Error decoding JSON:", err)
+		return lib.Auth{}
+	}
+
+	return lib.Auth{
+		IsAuthenticated: false,
+		Payload:         user,
+	}
+}
+
+```
+
+Once you've defined an auth you want to stick it onto a route as so:
 
 
+```
+func (health *Health) Routes() []lib.HttpAction {
+	return []lib.HttpAction{
+		{
+			Handler: health.Get,
+			Method:  lib.GET,
+			Action:  "get",
+			AuthValidators: []lib.AuthValidatorCallback{
+				commons.NewRouteHeaderValidator(),
+			},
+		},
+	}
+}
+```
+
+`AuthValidators` accepts multiple callbacks, which means you can attach multiple auth for a given route.
 
