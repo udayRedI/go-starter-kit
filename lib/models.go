@@ -11,6 +11,12 @@ func (OktaConfig *OktaConfig) IsValid() bool {
 	return len(OktaConfig.Api) > 0 && len(OktaConfig.Token) > 0 && len(OktaConfig.Issuer) > 0 && len(OktaConfig.RetailGroupId) > 0
 }
 
+type RedisCreds struct {
+	Addr     string
+	Password string
+	Db       int
+}
+
 type Config struct {
 	Port        string `json:"Port"`
 	Name        string `json:"Name"`
@@ -38,8 +44,8 @@ type Config struct {
 
 	Queues map[string]string `json:"Queues"`
 
-	DbUrl      string     `json:"DbUrl"`
-	RedisCreds CacheCreds `json:"Redis"`
+	DbUrl      string      `json:"DbUrl"`
+	RedisCreds *RedisCreds `json:"Redis"`
 }
 
 func (config *Config) IsValid() bool {

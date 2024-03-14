@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/go-redis/redis"
 )
 
 type Service struct {
@@ -17,8 +19,8 @@ type Service struct {
 	routes        map[string]HttpRoute
 	queueHandlers map[string]QueueRoute
 
-	SqsManager   ISqsManager
-	CacheManager ICacheManager
+	SqsManager  ISqsManager
+	RedisClient *redis.Client
 }
 
 func NewService(config *Config, definedApps *[]App) *Service {
@@ -86,14 +88,29 @@ func (s *Service) Init() string {
 
 	s.SqsManager = sqsManager
 
-	s.CacheManager = NewRedisManager(&s.config.RedisCreds)
-
 	for _, queues := range s.queueHandlers {
 		for queueName, handler := range queues {
 			handleErr := sqsManager.HandleQueue(&queueName, handler)
 			if handleErr != nil {
 				CheckFatal(handleErr, "SQS Handle failed")
 			}
+		}
+	}
+
+	if s.config.RedisCreds != nil {
+		s.RedisClient = redis.NewClient(&redis.Options{
+			Addr:     s.config.RedisCreds.Addr,
+			Password: s.config.RedisCreds.Password,
+			DB:       s.config.RedisCreds.Db,
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: true,
+				MinVersion:         tls.VersionTLS12,
+			},
+		})
+
+		if s.RedisClient == nil {
+			errorMsg := "unable to initiate redis"
+			CheckFatal(errors.New(errorMsg), errorMsg)
 		}
 	}
 
