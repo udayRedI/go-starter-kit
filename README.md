@@ -7,6 +7,8 @@ My aim with this project is to create a starter kit that prevents you from makin
 In the future, I will also delve deeper into the 'why' behind the underlying library, which will help you better appreciate my choices. If you think there's something better, feel free to suggest otherwise.
 
 
+Note: Do not make changes in lib folder unless you know what you're doing. 
+
 # Table of Contents
 - [Overview](#overview)
 - [Routing](#routing)
