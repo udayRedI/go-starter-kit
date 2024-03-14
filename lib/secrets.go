@@ -10,7 +10,7 @@ import (
 
 func GetSecretConfig() *Config {
 
-	filePtr := flag.String("file", "config/local.json", "config file location")
+	filePtr := flag.String("configFile", "config/local.json", "config file location")
 	flag.Parse()
 
 	config := &Config{}
@@ -32,10 +32,6 @@ func GetSecretConfig() *Config {
 
 	if config.ENV != "LOCAL" {
 		InitiateSentry(config)
-	} else {
-		for key, value := range (*config).AWSSecrets {
-			os.Setenv(key, value)
-		}
 	}
 
 	return config

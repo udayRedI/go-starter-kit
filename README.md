@@ -11,6 +11,7 @@ Note: Do not make changes in lib folder unless you know what you're doing.
 
 # Table of Contents
 - [Overview](#overview)
+- [Config](#config)
 - [Routing](#routing)
 - [Auth](#auth)
 - [Cache](#cache)
@@ -59,7 +60,36 @@ func (health *Health) Get(req *lib.Request) *lib.Response {
 
 ```
 
-App title is crucial for [routing](#routing).
+App title needs to be unique as its crucial for [routing](#routing).
+
+## Config <a name="config"></a>
+By default, config json is expected to be found at `config/local.json` and you can change the path while running `go run main.go -configFile=custom-file.json`
+Sample json file:
+```
+{
+  "ENV": "LOCAL",
+  "PORT": "8080",
+  "RedisCreds": {
+    "Addr": "...",
+    "Password": "...",
+    "Db": 1
+  }
+}
+```
+
+VScode debug:
+```
+{
+	"name": "Launch Package",
+	"type": "go",
+	"request": "launch",
+	"mode": "auto",
+	"program": "main.go",
+	"args": ["-configFile", "config/local.json"]
+},
+```
+
+In current setup, you can create more json files as per env and decide what to inject at build time.
 
 
 ## Routing <a name="routing"></a>
