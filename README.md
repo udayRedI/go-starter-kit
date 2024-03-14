@@ -62,7 +62,7 @@ App title is crucial for [routing](#routing).
 ## Routing <a name="routing"></a>
 Used [net/http](https://pkg.go.dev/net/http) package as its the most basic router. 
 
-Lets say you've an app `user` all routes that start with `/user` will be routed to the following function and everything after will be considered an action. In the following example, `/user/get` is a valid route where `get` is an action.
+Lets say you've an app `user`, all routes defined in `Routes()` are considered to be actions(sub-routes) of the same. In the following example, `/user/get` is a valid route where `get` is an action.
 
 ```
 func (health *Health) Routes() []lib.HttpAction {
@@ -84,8 +84,8 @@ Every action accepts 4 attribute:
 
 
 ## Auth <a name="auth"></a>
-Objective is not to facilitate auth because there could be any number validations. You will be able to reuse auth for every route.
-Once auth is finalized, its injected into `Request` object which is passed on to controller.
+Objective is not to provide auth but to help inject in routes. You will be able to reuse auth for every route.
+Once auth is finalized, an `auth` object injected into `Request` and all controllers and services will have access to it.
 
 Defining an auth:
 ```
