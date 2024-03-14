@@ -13,6 +13,7 @@ Note: Do not make changes in lib folder unless you know what you're doing.
 - [Overview](#overview)
 - [Routing](#routing)
 - [Auth](#auth)
+- [Cache](#cache)
 
 ## Overview <a name="overview"></a>
 If you've ever worked with Django, Nest.js, or perhaps Angular, you're likely familiar with a modular application structure. This approach aids in keeping the codebase organized, maintainable, and scalable.
@@ -176,3 +177,17 @@ func (health *Health) Routes() []lib.HttpAction {
 
 `AuthValidators` accepts multiple callbacks, which means you can attach multiple auth for a given route.
 
+
+
+## Cache <a name="cache"></a>
+Currently I've implemented only redis. So, if you're working with redis you're in luck. Chose [Go Redis](https://redis.uptrace.dev/) and its feature rich. Just ensure redis-redentials are passed json file in config folder.
+```
+"RedisCreds": {
+	"Addr": "...",
+	"Password": "...",
+	"Db": 1
+}
+```
+In order to access redis client inject using service `service.RedisClient`. [Go Redis](https://redis.uptrace.dev/) implements pooling so any operation you do would automatically close connection, one exception to this is redis.PubSub or redis.Conn, [link](https://redis.uptrace.dev/guide/go-redis-debugging.html#connection-pool-size).
+
+In the future plan is to support multiple caches like memcached and more.
