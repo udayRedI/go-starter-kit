@@ -3,20 +3,25 @@ package lib
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"log"
 	"os"
 )
 
-func GetSecrets(config *Config) {
+func GetSecretConfig() *Config {
 
-	configFile, errReadFile := os.ReadFile("app/system_configs/config.local.json")
+	filePtr := flag.String("file", "config/local.json", "config file location")
+	flag.Parse()
+
+	config := &Config{}
+	configFile, errReadFile := os.ReadFile(*filePtr)
 	if errReadFile != nil {
 		log.Fatal(errReadFile.Error())
 	}
 
 	errUnMarshall := json.Unmarshal([]byte(configFile), config)
 	if errUnMarshall != nil {
-		log.Fatal("Error Unmarshal config.json during startup")
+		log.Fatalf("Startup failed with error %s while unmarshling %s", errUnMarshall, configFile)
 	}
 
 	if config.IsValid() == false {
@@ -32,4 +37,6 @@ func GetSecrets(config *Config) {
 			os.Setenv(key, value)
 		}
 	}
+
+	return config
 }

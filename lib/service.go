@@ -13,7 +13,7 @@ import (
 )
 
 type Service struct {
-	config        Config
+	Config        Config
 	Server        http.Server
 	apps          map[string]App
 	routes        map[string]HttpRoute
@@ -26,7 +26,7 @@ type Service struct {
 func NewService(config *Config, definedApps *[]App) *Service {
 
 	s := &Service{
-		config:        *config,
+		Config:        *config,
 		apps:          make(map[string]App),
 		routes:        make(map[string]HttpRoute),
 		queueHandlers: make(map[string]QueueRoute),
@@ -64,7 +64,7 @@ func (s *Service) createRoutes(definedApps *[]App) {
 			s.routes[appTitle][route.Action][route.Method] = route
 		}
 		for queueRefName, handler := range app.QueueHandlers() {
-			queueName, found := s.config.Queues[queueRefName]
+			queueName, found := s.Config.Queues[queueRefName]
 			if found == false {
 				CheckFatal(errors.New(fmt.Sprintf("%s queue-ref not found in config, please check your config and try again", queueRefName)), "queue listen failed")
 			}
@@ -78,10 +78,10 @@ func (s *Service) Init() string {
 	s.Server = http.Server{}
 
 	s.Server.Handler = s
-	startPort := ":" + s.config.Port
+	startPort := ":" + s.Config.Port
 	s.Server.Addr = startPort
 
-	sqsManager, sqsErr := NewSqsManager(s.config.ENV)
+	sqsManager, sqsErr := NewSqsManager(s.Config.ENV)
 	if sqsErr != nil {
 		CheckFatal(sqsErr, "SQS initialization failed")
 	}
@@ -97,11 +97,11 @@ func (s *Service) Init() string {
 		}
 	}
 
-	if s.config.RedisCreds != nil {
+	if s.Config.RedisCreds != nil {
 		s.RedisClient = redis.NewClient(&redis.Options{
-			Addr:     s.config.RedisCreds.Addr,
-			Password: s.config.RedisCreds.Password,
-			DB:       s.config.RedisCreds.Db,
+			Addr:     s.Config.RedisCreds.Addr,
+			Password: s.Config.RedisCreds.Password,
+			DB:       s.Config.RedisCreds.Db,
 			TLSConfig: &tls.Config{
 				InsecureSkipVerify: true,
 				MinVersion:         tls.VersionTLS12,

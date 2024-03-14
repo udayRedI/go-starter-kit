@@ -1,7 +1,6 @@
 package health
 
 import (
-	"github.com/udayRedI/go-starter-kit/commons"
 	"github.com/udayRedI/go-starter-kit/lib"
 )
 
@@ -27,9 +26,6 @@ func (health *Health) Routes() []lib.HttpAction {
 			Handler: health.Get,
 			Method:  lib.GET,
 			Action:  "/get",
-			AuthValidators: []lib.AuthValidatorCallback{
-				commons.NewRouteHeaderValidator(),
-			},
 		},
 	}
 }

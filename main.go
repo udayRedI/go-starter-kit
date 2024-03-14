@@ -10,23 +10,18 @@ import (
 )
 
 func main() {
-	config := lib.Config{}
-	lib.GetSecrets(&config)
 
 	apps := []lib.App{
 		health.New(),
 	}
 
-	s := lib.NewService(&config, &apps)
+	config := lib.GetSecretConfig()
+	s := lib.NewService(config, &apps)
 
 	startPort := s.Init()
 
 	log.Println("INFO: Server started on localhost" + startPort)
 	handler := sentryhttp.New(sentryhttp.Options{}).Handle(s.Server.Handler)
-
-	if config.ENV == "LOCALL" {
-		startPort = "localhost" + startPort
-	}
 
 	log.Fatal(http.ListenAndServe(startPort, handler))
 }
